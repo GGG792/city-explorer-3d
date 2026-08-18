@@ -77,17 +77,18 @@ const BUILDING_TYPES = {
 const TYPE_KEYS = Object.keys(BUILDING_TYPES);
 
 export class CityBuilder {
-  constructor(scene, assetLoader, quality) {
+  constructor(scene, assetLoader, quality, modelLoader) {
     this.scene = scene;
     this.assetLoader = assetLoader;
     this.quality = quality;
+    this.modelLoader = modelLoader; // 真实 GLTF 模型加载器
 
     this.colliders = [];
     this.chunks = new Map(); // chunkKey -> { objects: [], loaded: false }
     this.lodObjects = [];    // THREE.LOD 对象列表（供 WorldLoader 注册）
     this.allObjects = [];    // 所有创建的对象引用（用于 dispose）
 
-    // 预创建共享材质
+    // 预创建共享材质（用于地面/人行道/草地等程序化部分）
     this.materials = this.createMaterials();
 
     // 缓存共享的"中距离简化材质"（按建筑类型复用，避免每栋楼新建材质）
@@ -274,12 +275,10 @@ export class CityBuilder {
     const margin = 2;
 
     if (numBuildings === 1) {
-      // 单栋大楼占据街区大部分
       const w = blockSize - margin * 2 - Math.random() * 4;
       const d = blockSize - margin * 2 - Math.random() * 4;
       this.createBuilding(x, z, w, d);
     } else {
-      // 多栋建筑，沿一条轴分割
       const splitAxis = Math.random() > 0.5 ? 'x' : 'z';
       const splitPos = blockSize * (0.35 + Math.random() * 0.3);
 
@@ -305,78 +304,159 @@ export class CityBuilder {
 
     // 四角路灯
     this.addCornerLamps(x, z, blockSize, lampPositions);
+
+    // 沿街停放车辆 + 街道道具
+    this.addStreetProps(x, z, blockSize);
   }
 
-  /** 创建单栋建筑（ExtrudeGeometry + LOD + PBR 材质） */
+  /** 沿街道放置停放车辆与道具（使用真实 GLTF 模型） */
+  addStreetProps(x, z, blockSize) {
+    if (!this.modelLoader || !this.modelLoader.loaded) return;
+    const half = blockSize / 2;
+    const offset = 3; // 距离人行道边缘
+
+    const cars = this.modelLoader.getCars();
+    const props = this.modelLoader.getProps();
+
+    // 每边随机停放 1~2 辆车
+    if (cars.length > 0) {
+      const carCount = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < carCount; i++) {
+        const carName = cars[Math.floor(Math.random() * cars.length)];
+        const car = this.modelLoader.clone(carName);
+        if (!car) continue;
+        const side = Math.random() > 0.5 ? 1 : -1;
+        const along = (Math.random() - 0.5) * (blockSize - 8);
+        // 沿 X 轴停或沿 Z 轴停
+        if (Math.random() > 0.5) {
+          car.position.set(x + along, 0, z + side * (half + offset));
+          car.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+        } else {
+          car.position.set(x + side * (half + offset), 0, z + along);
+          car.rotation.y = side > 0 ? 0 : Math.PI;
+        }
+        this.addToChunk(car, car.position.x, car.position.z);
+        this.allObjects.push(car);
+      }
+    }
+
+    // 随机放置 1~2 个街道道具（长椅/垃圾桶/消防栓等）
+    if (props.length > 0 && Math.random() > 0.3) {
+      const propCount = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < propCount; i++) {
+        const propName = props[Math.floor(Math.random() * props.length)];
+        // 跳过路灯（路灯单独由 addCornerLamps 处理）
+        if (propName.startsWith('streetlight') || propName.startsWith('trafficlight')) continue;
+        const prop = this.modelLoader.clone(propName);
+        if (!prop) continue;
+        const px = x + (Math.random() - 0.5) * (blockSize - 4);
+        const pz = z + half + 1.5;
+        prop.position.set(px, 0, pz);
+        prop.rotation.y = Math.random() * Math.PI * 2;
+        this.addToChunk(prop, px, pz);
+        this.allObjects.push(prop);
+      }
+    }
+  }
+
+  /** 创建单栋建筑（优先使用真实 GLTF 模型，无模型时回退到 ExtrudeGeometry） */
   createBuilding(centerX, centerZ, width, depth) {
+    // 优先使用真实 GLTF 模型
+    if (this.modelLoader && this.modelLoader.loaded) {
+      const buildings = this.modelLoader.getBuildings();
+      if (buildings.length > 0) {
+        const modelName = buildings[Math.floor(Math.random() * buildings.length)];
+        const model = this.modelLoader.clone(modelName);
+        if (model) {
+          // 获取模型原始尺寸用于缩放适配
+          const sz = this.modelLoader.getModelSize(modelName);
+          const scaleX = width / Math.max(sz.width, 0.1);
+          const scaleZ = depth / Math.max(sz.depth, 0.1);
+          const scaleY = 0.8 + Math.random() * 0.6; // 高度随机化
+          model.scale.set(scaleX, scaleY, scaleZ);
+          model.position.set(centerX, 0, centerZ);
+          model.rotation.y = Math.random() * Math.PI * 2;
+
+          // 创建 LOD 包装
+          const lod = new THREE.LOD();
+          lod.addLevel(model, 0);
+          // 中距离：复用同一模型但关闭阴影投射
+          const medModel = this.modelLoader.clone(modelName);
+          if (medModel) {
+            medModel.scale.copy(model.scale);
+            medModel.position.copy(model.position);
+            medModel.rotation.copy(model.rotation);
+            medModel.traverse((c) => { if (c.isMesh) c.castShadow = false; });
+            lod.addLevel(medModel, this.quality.lodNear);
+          }
+          // 远距离剔除
+          lod.addLevel(new THREE.Object3D(), this.quality.lodFar);
+
+          // 碰撞体（基于缩放后尺寸）
+          const realH = sz.height * scaleY;
+          const box = new THREE.Box3(
+            new THREE.Vector3(centerX - width / 2, 0, centerZ - depth / 2),
+            new THREE.Vector3(centerX + width / 2, realH, centerZ + depth / 2)
+          );
+          this.colliders.push(box);
+
+          this.addToChunk(lod, centerX, centerZ);
+          this.lodObjects.push(lod);
+          this.allObjects.push(lod);
+          return;
+        }
+      }
+    }
+
+    // 回退：程序化挤出几何体
+    this.createProceduralBuilding(centerX, centerZ, width, depth);
+  }
+
+  /** 程序化建筑（无 GLTF 模型时的回退方案） */
+  createProceduralBuilding(centerX, centerZ, width, depth) {
     const typeKey = TYPE_KEYS[Math.floor(Math.random() * TYPE_KEYS.length)];
     const type = BUILDING_TYPES[typeKey];
     const height = type.minHeight + Math.random() * (type.maxHeight - type.minHeight);
 
-    // ---------- 1. 创建 2D 建筑轮廓（多种形状） ----------
     const shape = this.createBuildingShape(width, depth);
-
-    // ---------- 2. 挤出几何体 ----------
     const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: height,
-      bevelEnabled: true,
-      bevelThickness: 0.4,
-      bevelSize: 0.3,
-      bevelSegments: 1,
-      steps: 1,
+      depth: height, bevelEnabled: true,
+      bevelThickness: 0.4, bevelSize: 0.3, bevelSegments: 1, steps: 1,
     });
-    // 旋转使挤出方向朝上（Y 轴）
     geo.rotateX(-Math.PI / 2);
     geo.translate(centerX, 0, centerZ);
 
-    // ---------- 3. UV 缩放（纹理按建筑尺寸自动平铺） ----------
     const uv = geo.attributes.uv;
-    const tileU = (width + depth) / 6; // 每 6 米重复一次纹理
+    const tileU = (width + depth) / 6;
     const tileV = height / 3.5;
     for (let i = 0; i < uv.count; i++) {
       uv.setXY(i, uv.getX(i) * tileU, uv.getY(i) * tileV);
     }
     uv.needsUpdate = true;
 
-    // ---------- 4. 高精度材质（近距离） ----------
     const highMat = this.materials[typeKey];
-
-    // ---------- 5. 中等精度材质（中距离，纯色无纹理，按类型复用） ----------
     if (!this.medMaterials[typeKey]) {
       this.medMaterials[typeKey] = new THREE.MeshStandardMaterial({
-        color: type.color,
-        roughness: type.roughness + 0.1,
-        metalness: type.metalness * 0.5,
+        color: type.color, roughness: type.roughness + 0.1, metalness: type.metalness * 0.5,
       });
     }
     const medMat = this.medMaterials[typeKey];
 
-    // ---------- 6. 创建 LOD ----------
     const lod = new THREE.LOD();
-
-    // 高精度：完整 PBR 纹理 + 投射阴影
     const highMesh = new THREE.Mesh(geo, highMat);
-    highMesh.castShadow = true;
-    highMesh.receiveShadow = true;
+    highMesh.castShadow = true; highMesh.receiveShadow = true;
     lod.addLevel(highMesh, 0);
-
-    // 中精度：简化材质，不投射阴影（中距离建筑多，关闭投射大幅减负）
     const medMesh = new THREE.Mesh(geo, medMat);
-    medMesh.castShadow = false;
-    medMesh.receiveShadow = true;
+    medMesh.castShadow = false; medMesh.receiveShadow = true;
     lod.addLevel(medMesh, this.quality.lodNear);
-
-    // 远距离：剔除（空 Object3D）
     lod.addLevel(new THREE.Object3D(), this.quality.lodFar);
 
-    // ---------- 7. 碰撞体 ----------
     const box = new THREE.Box3(
       new THREE.Vector3(centerX - width / 2, 0, centerZ - depth / 2),
       new THREE.Vector3(centerX + width / 2, height, centerZ + depth / 2)
     );
     this.colliders.push(box);
 
-    // ---------- 8. 加入 Chunk ----------
     this.addToChunk(lod, centerX, centerZ);
     this.lodObjects.push(lod);
     this.allObjects.push(lod);
@@ -613,21 +693,27 @@ export class CityBuilder {
   }
 
   /**
-   * 创建路灯 InstancedMesh
-   * 灯杆：LatheGeometry（锥形旋转体）
-   * 灯臂：CylinderGeometry（水平横臂）
-   * 灯头：IcosahedronGeometry
-   * 三部分合并为单一几何体
+   * 创建路灯（优先使用真实 GLTF streetlight 模型，回退到 InstancedMesh）
    */
   createLampInstances(positions) {
+    // 优先使用真实 GLTF 路灯模型
+    if (this.modelLoader && this.modelLoader.loaded && this.modelLoader.models['streetlight']) {
+      const group = new THREE.Group();
+      for (const p of positions) {
+        const lamp = this.modelLoader.clone('streetlight');
+        if (!lamp) continue;
+        lamp.position.set(p.x, 0, p.z);
+        lamp.rotation.y = Math.random() * Math.PI * 2;
+        group.add(lamp);
+      }
+      return group;
+    }
+
+    // 回退：InstancedMesh（程序化几何体路灯）
     const lampGeo = this.createLampGeometry();
-
     const mesh = new THREE.InstancedMesh(
-      lampGeo,
-      this.materials.metal,
-      positions.length
+      lampGeo, this.materials.metal, positions.length
     );
-
     const matrix = new THREE.Matrix4();
     for (let i = 0; i < positions.length; i++) {
       const p = positions[i];
@@ -638,7 +724,6 @@ export class CityBuilder {
       );
       mesh.setMatrixAt(i, matrix);
     }
-
     mesh.castShadow = true;
     mesh.instanceMatrix.needsUpdate = true;
     return mesh;

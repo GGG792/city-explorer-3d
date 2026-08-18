@@ -19,6 +19,7 @@ import { PostProcessing } from '../effects/PostProcessing.js';
 import { LoadingScreen } from '../ui/LoadingScreen.js';
 import { HUD } from '../ui/HUD.js';
 import { ContextLossHandler } from '../utils/ContextLossHandler.js';
+import { ModelLoader } from '../utils/ModelLoader.js';
 
 export class Game {
   constructor() {
@@ -67,12 +68,18 @@ export class Game {
     await this.assetLoader.loadEnvironment(this.sceneManager);
     this.loadingScreen.setProgress(55);
 
+    // 5.5 真实城市 GLTF 模型加载
+    this.loadingScreen.setStatus('正在加载高质量城市模型...');
+    this.modelLoader = new ModelLoader();
+    await this.modelLoader.loadAll(this.loadingScreen);
+
     // 6. 构建城市
     this.loadingScreen.setStatus('正在构建城市街区...');
     this.cityBuilder = new CityBuilder(
       this.sceneManager.scene,
       this.assetLoader,
-      this.quality
+      this.quality,
+      this.modelLoader
     );
     await this.cityBuilder.build(this.loadingScreen);
     this.loadingScreen.setProgress(80);

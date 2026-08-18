@@ -9,6 +9,9 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "three": "^0.160.0"
   },
   "devDependencies": {
