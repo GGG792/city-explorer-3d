@@ -120,6 +120,8 @@ export class QualityDetector {
       shadowCameraSize: 80,
       shadowCameraFar: 300,
       shadowBias: -0.0005,
+      // 阴影贴图每 N 帧重渲一次（2 = 每两帧，平衡画质与性能）
+      shadowUpdateInterval: 2,
 
       // 色调映射与曝光
       toneMapping: THREE.ACESFilmicToneMapping,
@@ -181,6 +183,7 @@ export class QualityDetector {
       shadowCameraSize: 60,
       shadowCameraFar: 200,
       shadowBias: -0.0005,
+      shadowUpdateInterval: 3,
 
       toneMapping: THREE.ACESFilmicToneMapping,
       toneMappingExposure: 0.95,
@@ -235,6 +238,7 @@ export class QualityDetector {
       shadowCameraSize: 50,
       shadowCameraFar: 150,
       shadowBias: -0.001,
+      shadowUpdateInterval: 4,
 
       toneMapping: THREE.ACESFilmicToneMapping,
       toneMappingExposure: 0.9,
@@ -294,6 +298,8 @@ export class QualityDetector {
       shadowCameraSize: 45,
       shadowCameraFar: 120,
       shadowBias: -0.001,
+      // 手机端阴影降频更激进，每 5 帧一次
+      shadowUpdateInterval: 5,
 
       toneMapping: THREE.ACESFilmicToneMapping,
       toneMappingExposure: 1.0,

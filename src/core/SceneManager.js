@@ -94,6 +94,12 @@ export class SceneManager {
     // 计算太阳方向并更新天空+光照+环境贴图
     this.updateSun();
 
+    // 关闭阴影贴图自动更新，由 update() 按帧间隔手动触发（降频减负）
+    if (this.quality.shadowMapEnabled) {
+      this.renderer.shadowMap.autoUpdate = false;
+      this.renderer.shadowMap.needsUpdate = true;
+    }
+
     return this.scene;
   }
 
@@ -118,7 +124,7 @@ export class SceneManager {
   }
 
   /**
-   * 每帧更新 —— 阴影相机跟随玩家移动
+   * 每帧更新 —— 阴影相机跟随玩家移动，并按帧间隔触发阴影贴图重渲
    * @param {THREE.Vector3} playerPosition
    */
   update(playerPosition) {
@@ -129,6 +135,14 @@ export class SceneManager {
         this.sunDirection.clone().multiplyScalar(150)
       );
       this.sun.target.updateMatrixWorld();
+
+      // 阴影贴图降频更新（autoUpdate 已关闭，由这里手动触发）
+      // 每 shadowUpdateInterval 帧重渲一次阴影贴图
+      this._shadowFrame = (this._shadowFrame || 0) + 1;
+      if (this._shadowFrame >= this.quality.shadowUpdateInterval) {
+        this._shadowFrame = 0;
+        this.renderer.shadowMap.needsUpdate = true;
+      }
     }
   }
 

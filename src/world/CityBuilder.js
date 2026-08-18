@@ -89,6 +89,9 @@ export class CityBuilder {
 
     // 预创建共享材质
     this.materials = this.createMaterials();
+
+    // 缓存共享的"中距离简化材质"（按建筑类型复用，避免每栋楼新建材质）
+    this.medMaterials = {};
   }
 
   /** 创建共享 PBR 材质 */
@@ -338,25 +341,28 @@ export class CityBuilder {
     // ---------- 4. 高精度材质（近距离） ----------
     const highMat = this.materials[typeKey];
 
-    // ---------- 5. 中等精度材质（中距离，纯色无纹理） ----------
-    const medMat = new THREE.MeshStandardMaterial({
-      color: type.color,
-      roughness: type.roughness + 0.1,
-      metalness: type.metalness * 0.5,
-    });
+    // ---------- 5. 中等精度材质（中距离，纯色无纹理，按类型复用） ----------
+    if (!this.medMaterials[typeKey]) {
+      this.medMaterials[typeKey] = new THREE.MeshStandardMaterial({
+        color: type.color,
+        roughness: type.roughness + 0.1,
+        metalness: type.metalness * 0.5,
+      });
+    }
+    const medMat = this.medMaterials[typeKey];
 
     // ---------- 6. 创建 LOD ----------
     const lod = new THREE.LOD();
 
-    // 高精度：完整 PBR 纹理
+    // 高精度：完整 PBR 纹理 + 投射阴影
     const highMesh = new THREE.Mesh(geo, highMat);
     highMesh.castShadow = true;
     highMesh.receiveShadow = true;
     lod.addLevel(highMesh, 0);
 
-    // 中精度：简化材质
+    // 中精度：简化材质，不投射阴影（中距离建筑多，关闭投射大幅减负）
     const medMesh = new THREE.Mesh(geo, medMat);
-    medMesh.castShadow = true;
+    medMesh.castShadow = false;
     medMesh.receiveShadow = true;
     lod.addLevel(medMesh, this.quality.lodNear);
 
@@ -595,9 +601,10 @@ export class CityBuilder {
       foliageMesh.setMatrixAt(i, matrix);
     }
 
+    // 树干投射阴影；树冠不投射（半透明体投射阴影质量差且昂贵）
     trunkMesh.castShadow = true;
     trunkMesh.receiveShadow = true;
-    foliageMesh.castShadow = true;
+    foliageMesh.castShadow = false;
     foliageMesh.receiveShadow = true;
     trunkMesh.instanceMatrix.needsUpdate = true;
     foliageMesh.instanceMatrix.needsUpdate = true;
@@ -695,6 +702,11 @@ export class CityBuilder {
         }
       }
     }
+    // 释放缓存的简化材质
+    for (const k in this.medMaterials) {
+      this.medMaterials[k].dispose();
+    }
+    this.medMaterials = {};
     this.allObjects = [];
     this.colliders = [];
     this.chunks.clear();

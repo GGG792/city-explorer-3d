@@ -33,6 +33,19 @@ export class ContextLossHandler {
   onContextRestored() {
     console.log('[ContextLoss] WebGL 上下文已恢复，重建资源...');
 
+    // 0. 恢复阴影贴图降频更新配置
+    try {
+      const q = this.sceneManager.quality;
+      if (q && q.shadowMapEnabled) {
+        this.sceneManager.renderer.shadowMap.enabled = true;
+        this.sceneManager.renderer.shadowMap.type = q.shadowMapType;
+        this.sceneManager.renderer.shadowMap.autoUpdate = false;
+        this.sceneManager.renderer.shadowMap.needsUpdate = true;
+      }
+    } catch (e) {
+      console.warn('[ContextLoss] 阴影配置恢复失败', e);
+    }
+
     // 1. 重新生成环境贴图（PMREM）
     if (this.sceneManager) {
       try {
