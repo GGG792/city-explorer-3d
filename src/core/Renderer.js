@@ -17,32 +17,54 @@ export class Renderer {
 
   /**
    * 初始化渲染器并挂载到 DOM 容器
-   * @param {HTMLElement} container — 画布父容器
+   * @param {HTMLElement} container — 画布父容器（div）
    */
   init(container) {
     this.container = container;
 
+    // 在容器内创建 canvas 元素
+    const canvas = document.createElement('canvas');
+    canvas.style.display = 'block';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.touchAction = 'none'; // 阻止浏览器默认手势（移动端）
+    container.innerHTML = '';
+    container.appendChild(canvas);
+    this.canvas = canvas;
+
     // 尝试 WebGL2 上下文，失败则降级 WebGL1
-    let context = container.getContext('webgl2', {
+    let context = null;
+    const glAttrs = {
       antialias: this.quality.antialias,
       powerPreference: this.quality.powerPreference,
       stencil: false,
       depth: true,
       alpha: false,
-    });
+      preserveDrawingBuffer: false,
+      failIfMajorPerformanceCaveat: false,
+    };
+
+    try {
+      context = canvas.getContext('webgl2', glAttrs);
+    } catch (e) {
+      console.warn('[Renderer] WebGL2 上下文获取失败:', e.message);
+    }
 
     if (!context) {
-      context = container.getContext('webgl', {
-        antialias: this.quality.antialias,
-        powerPreference: this.quality.powerPreference,
-        stencil: false,
-        depth: true,
-        alpha: false,
-      });
+      try {
+        context = canvas.getContext('webgl', glAttrs) ||
+                  canvas.getContext('experimental-webgl', glAttrs);
+      } catch (e) {
+        console.warn('[Renderer] WebGL1 上下文获取失败:', e.message);
+      }
+    }
+
+    if (!context) {
+      throw new Error('当前浏览器不支持 WebGL，请升级浏览器或开启硬件加速');
     }
 
     this.renderer = new THREE.WebGLRenderer({
-      canvas: container,
+      canvas,
       context,
       antialias: this.quality.antialias,
       powerPreference: this.quality.powerPreference,
@@ -72,16 +94,10 @@ export class Renderer {
     this.resize(window.innerWidth, window.innerHeight);
 
     // 上下文丢失事件 —— 防止手机切后台后崩溃
-    this.renderer.domElement.addEventListener(
-      'webglcontextlost',
-      this.onContextLost.bind(this),
-      false
-    );
-    this.renderer.domElement.addEventListener(
-      'webglcontextrestored',
-      this.onContextRestored.bind(this),
-      false
-    );
+    this._onContextLost = this.onContextLost.bind(this);
+    this._onContextRestored = this.onContextRestored.bind(this);
+    canvas.addEventListener('webglcontextlost', this._onContextLost, false);
+    canvas.addEventListener('webglcontextrestored', this._onContextRestored, false);
 
     return this.renderer;
   }
@@ -117,9 +133,17 @@ export class Renderer {
 
   /** 释放资源 */
   dispose() {
+    if (this.canvas) {
+      if (this._onContextLost) {
+        this.canvas.removeEventListener('webglcontextlost', this._onContextLost);
+      }
+      if (this._onContextRestored) {
+        this.canvas.removeEventListener('webglcontextrestored', this._onContextRestored);
+      }
+    }
     if (this.renderer) {
       this.renderer.dispose();
-      this.renderer.forceContextLoss?.();
+      try { this.renderer.forceContextLoss?.(); } catch (e) {}
     }
   }
 }
