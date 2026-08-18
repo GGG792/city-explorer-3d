@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <title>城市漫游 · 3D开放世界探索</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <!-- ==================== 加载界面 ==================== -->
+  <div id="loading-screen">
+    <div class="loading-content">
+      <h1 class="loading-title">城市漫游</h1>
+      <p class="loading-subtitle">3D 开放世界探索</p>
+      <div class="loading-bar-container">
+        <div class="loading-bar-fill" id="loading-bar"></div>
+      </div>
+      <p class="loading-percent" id="loading-percent">0%</p>
+      <p class="loading-status" id="loading-status">正在初始化渲染引擎...</p>
+    </div>
+  </div>
+
+  <!-- ==================== 3D 画布容器 ==================== -->
+  <div id="canvas-container"></div>
+
+  <!-- ==================== 极简 HUD ==================== -->
+  <div id="hud" style="display:none;">
+    <div id="hud-hint" class="hud-text"></div>
+    <div id="hud-fps" class="hud-text hud-fps"></div>
+  </div>
+
+  <!-- ==================== 手机触屏控制 ==================== -->
+  <!-- 仅在移动设备上显示，PC端通过CSS隐藏 -->
+  <div id="mobile-controls" style="display:none;">
+    <!-- 左下角虚拟摇杆 -->
+    <div id="joystick-zone">
+      <div id="joystick-base">
+        <div id="joystick-thumb"></div>
+      </div>
+    </div>
+    <!-- 右侧视角拖拽区域（透明，仅接收触摸事件） -->
+    <div id="look-zone"></div>
+    <!-- 右下角操作按钮 -->
+    <div id="action-buttons">
+      <button id="btn-run" class="touch-btn">奔跑</button>
+      <button id="btn-jump" class="touch-btn">跳跃</button>
+    </div>
+    <!-- 横屏提示（竖屏时显示） -->
+    <div id="rotate-hint">
+      <p>请旋转设备至横屏模式</p>
+    </div>
+  </div>
+
+  <!-- ==================== 点击开始覆盖层（PC端指针锁定） ==================== -->
+  <div id="start-overlay" style="display:none;">
+    <div class="start-content">
+      <h2>点击开始探索</h2>
+      <p>WASD 移动 · 鼠标转动视角 · Shift 奔跑 · 空格跳跃</p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

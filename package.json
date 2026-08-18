@@ -1,0 +1,17 @@
+{
+  "name": "city-explorer-3d",
+  "version": "1.0.0",
+  "description": "3D开放世界城市漫游探索游戏 - Three.js + Vite",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
